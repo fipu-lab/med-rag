@@ -42,11 +42,7 @@ venv.bak/
 
 
 llm_cache/
-output/
-output_prvi_rad/
-figures/
 qdrant_db/
-archive/ 
 
 # Datasets
 dataset
@@ -61,8 +57,6 @@ db/mimic3_full/
 db/prepared_csv/
 db/prepared_full_csv/
 
-*.log
-*.pdf
 *.sqlite3
 *.db
 
