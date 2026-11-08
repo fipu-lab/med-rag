@@ -62,24 +62,30 @@ def get_data(source="test", continue_from=None, filter_case=None):
             yield line
 
 
-def query(sql, timeout=10):
-
-    conn = sqlite3.connect(db_path)
-    timer = threading.Timer(timeout, lambda: conn.interrupt())
-    cursor = conn.cursor()
+def query(sql, timeout=10, log_fn=None):
+    conn = None
+    timer = None
     try:
+        conn = sqlite3.connect(db_path)
+        timer = threading.Timer(timeout, lambda: conn.interrupt())
+        cursor = conn.cursor()
         timer.start()
         cursor.execute(sql)
         results = cursor.fetchall()
         return results
     except sqlite3.OperationalError as e:
-        print("Error: ", e)
+        if log_fn:
+            log_fn("Error: ", e)
         return None
     except Exception as e:
-        print("Error: ", e)
+        if log_fn:
+            log_fn("Error: ", e)
         return None
     finally:
-        timer.cancel()
+        if timer:
+            timer.cancel()
+        if conn:
+            conn.close()
 
 
 async def gather_tasks(tasks: dict):
@@ -135,16 +141,16 @@ async def main(
     dataset="test",
 ):
 
-    print = logger(f"output/output_{experiment_name}.log")
+    log = logger(f"output/output_{experiment_name}.log")
 
     if not continue_from:
-        print()
-        print("=" * 30)
-        print()
-        print(
+        log()
+        log("=" * 30)
+        log()
+        log(
             f"Starting experiment {experiment_name} at {dt.datetime.now().isoformat()}..."
         )
-        print()
+        log()
     models = llm.get_models(models_filter=models_filter)
 
     # 1000 test cases
@@ -171,30 +177,30 @@ async def main(
                 return data
 
         for batch_result in batch_results:
-            print("*" * 30)
-            print()
-            print("CASE:", llm.normalize(batch_result.case.key))
-            print("QUESTION:", llm.normalize(batch_result.case.question_refine))
-            print()
-            print("TRUE:", llm.normalize(batch_result.case.sql))
-            truth = query(batch_result.case.sql)
-            print()
+            log("*" * 30)
+            log()
+            log("CASE:", llm.normalize(batch_result.case.key))
+            log("QUESTION:", llm.normalize(batch_result.case.question_refine))
+            log()
+            log("TRUE:", llm.normalize(batch_result.case.sql))
+            truth = query(batch_result.case.sql, log_fn=log)
+            log()
 
             for model, response in batch_result.output.items():
-                print(f"LLM [{model}]:", response.sql)
-                data = query(response.sql)
-                print(f"MODEL:", response.meta.model)
+                log(f"LLM [{model}]:", response.sql)
+                data = query(response.sql, log_fn=log)
+                log(f"MODEL:", response.meta.model)
                 usage = {
                     "in": response.meta.usage.prompt_tokens,
                     "out": response.meta.usage.completion_tokens,
                 }
-                print(f"USAGE:", json.dumps(usage))
-                print(
+                log(f"USAGE:", json.dumps(usage))
+                log(
                     "ANSWER:",
                     format_answer(data),
                     format_answer(truth),
                 )
-                print()
+                log()
 
 
 # filter_case = "9e98c86301154d7baf44b1654b51c1f0"
@@ -223,14 +229,15 @@ models_filter = [
 exclude_info = "-".join(exclude_prompts) if len(exclude_prompts) else "none"
 experiment_name = f"batch_size={batch_size}&n={batch_size * batch_limit}&exclude={exclude_info}&take={take}&dataset={dataset}"
 
-asyncio.run(
-    main(
-        experiment_name,
-        batch_size,
-        batch_limit,
-        exclude_prompts,
-        continue_from,
-        models_filter,
-        dataset,
+if __name__ == "__main__":
+    asyncio.run(
+        main(
+            experiment_name,
+            batch_size,
+            batch_limit,
+            exclude_prompts,
+            continue_from,
+            models_filter,
+            dataset,
+        )
     )
-)
